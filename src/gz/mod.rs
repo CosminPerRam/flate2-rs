@@ -91,7 +91,7 @@ impl GzHeader {
 pub enum GzHeaderState {
     Start(u8, [u8; 10]),
     Xlen(Option<Box<Crc>>, u8, [u8; 2]),
-    Extra(Option<Box<Crc>>, u16),
+    Extra(Option<Box<Crc>>, u16, u16),
     Filename(Option<Box<Crc>>),
     Comment(Option<Box<Crc>>),
     Crc(Option<Box<Crc>>, u8, [u8; 2]),
@@ -159,21 +159,20 @@ impl GzHeaderParser {
                             crc.update(buffer);
                         }
                         let xlen = parse_le_u16(buffer);
-                        self.header.extra = Some(vec![0; xlen as usize]);
-                        self.state = GzHeaderState::Extra(crc.take(), 0);
+                        self.state = GzHeaderState::Extra(crc.take(), 0, xlen);
                     } else {
                         self.state = GzHeaderState::Filename(crc.take());
                     }
                 }
-                GzHeaderState::Extra(crc, count) => {
-                    debug_assert!(self.header.extra.is_some());
-                    let extra = self.header.extra.as_mut().unwrap();
+                GzHeaderState::Extra(crc, count, length) => {
+                    let mut extra = vec![0; *length as usize];
                     while (*count as usize) < extra.len() {
                         *count += read_into(r, &mut extra[*count as usize..])? as u16;
                     }
                     if let Some(crc) = crc {
-                        crc.update(extra);
+                        crc.update(&extra);
                     }
+                    self.header.extra = Some(extra);
                     self.state = GzHeaderState::Filename(crc.take());
                 }
                 GzHeaderState::Filename(crc) => {
